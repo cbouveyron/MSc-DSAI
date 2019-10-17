@@ -1,0 +1,157 @@
+---
+title: "Network - Lesson 3 - Visualization"
+author: 'Pr. Charles Bouveyron'
+date: "Last updated on `r Sys.Date()`"
+output:
+    html_document:
+        toc: true
+        toc_float:
+          collapsed: true
+          smooth_scroll: true
+        toc_depth: 2
+        number_sections: true
+---
+
+# Introduction
+
+```{r message=FALSE, warning=FALSE}
+library(sna)
+load('SampsonMonks.Rdata')
+colnames(X) = rownames(X) = 1:18
+
+par(mfrow=c(1,2))
+plot.sociomatrix(X)
+
+ind = sample(18,18)
+plot.sociomatrix(X[ind,ind])
+```
+
+```{r message=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+gplot(X,edge.col = 'gray')
+pos = matrix(runif(2*18,0,1),ncol = 2)
+gplot(X,edge.col = 'gray', coord = pos)
+```
+
+
+# Multidimensional Scaling
+
+```{r message=FALSE, warning=FALSE}
+library(sna)
+load('SampsonMonks.Rdata')
+colnames(X) = rownames(X) = 1:18
+
+D = geodist(X)$gdist
+Z = cmdscale(D,2)
+gplot(X,edge.col = 'gray', coord = Z)
+```
+
+> Exercice: check if the distances are preserved?
+
+```{r, eval=FALSE}
+Delta = as.matrix(dist(Z))
+plot(as.vector(D),as.vector(Delta),type='p')
+```
+
+With the `igrah` library:
+
+```{r message=FALSE, warning=FALSE}
+library(igraph)
+g = graph.adjacency(X)
+g$layout <- layout.mds
+plot(g)
+```
+
+
+# Latent space model 
+
+## A naive inference
+
+A naive inference would be to try to directly maximize the likelihood:
+
+```{r, eval=FALSE}
+negloglik <- function(theta,X){
+      n = nrow(X)
+      alpha = theta[1]
+      Z = matrix(theta[-1],ncol=2)
+      D = as.matrix(dist(Z))
+      
+      ll = 0
+      for (i in 1:(n-1))
+        for (j in (i+1):n)
+          ll = ll + X[i,j]*(alpha-D[i,j]) - log(1+exp(alpha-D[i,j]))
+      
+      - 2 * ll
+}
+
+X = cbind(c(0,1,1,1,1),
+          c(1,0,0,0,0),
+          c(1,0,0,0,0),
+          c(1,0,0,0,0),
+          c(1,0,0,0,0))
+
+#load('SampsonMonks.Rdata')
+#colnames(X) = rownames(X) = 1:18
+
+theta = c(0,runif(2*nrow(X),-1,1))
+res = optim(theta,negloglik,X=X,method='SANN')
+
+Z = matrix(res$par[-1],ncol=2)
+gplot(X,edge.col='gray',coord=Z)
+```
+
+The interest of the model is the ability to evaluate $P(X_{ij}=1|\theta)$:
+
+```{r eval=FALSE}
+n = nrow(X)
+P = matrix(0, ncol=n, nrow=n)
+alpha = res$par[1]
+D = as.matrix(dist(matrix(res$par[-1],ncol=2)))
+for (i in 1:(n-1))
+        for (j in (i+1):n)
+          P[i,j] = P[j,i] = exp(alpha-D[i,j]) / (1 + exp(alpha-D[i,j]))
+
+par(mfrow=c(1,2))
+image(X)
+image(P)
+```
+
+
+## A more serious inference
+
+```{r message=FALSE, warning=FALSE}
+library(latentnet)
+g = as.network(X)
+fit = ergmm(g ~ euclidean(d=2))
+plot(fit)
+```
+
+
+```{r eval=FALSE}
+n = nrow(X)
+P = matrix(0, ncol=n, nrow=n)
+alpha = fit$mkl$beta
+D = as.matrix(dist(fit$mkl$Z))
+for (i in 1:(n-1))
+        for (j in (i+1):n)
+          P[i,j] = P[j,i] = exp(alpha-D[i,j]) / (1 + exp(alpha-D[i,j]))
+
+par(mfrow=c(1,2))
+image(X)
+image(P)
+```
+
+
+# Other methods
+
+```{r}
+library(igraph)
+g = graph.adjacency(X)
+
+g$layout <- layout.circle
+# You can tray also layout.mds layout.random, layout.reingold.tilford
+
+plot(g)
+```
+
+
