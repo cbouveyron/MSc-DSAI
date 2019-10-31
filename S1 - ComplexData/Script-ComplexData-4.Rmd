@@ -1,0 +1,161 @@
+---
+title: "Network - Lesson 4 - Clustering"
+author: 'Pr. Charles Bouveyron'
+date: "Last updated on `r Sys.Date()`"
+output:
+    html_document:
+        toc: true
+        toc_float:
+          collapsed: true
+          smooth_scroll: true
+        toc_depth: 2
+        number_sections: true
+---
+
+# Latent position cluster model (LPCM)
+
+LPCM extends LSM by adding a clustering structure. Let us apply it to the Monks data:
+
+```{r message=FALSE, warning=FALSE}
+library(latentnet); library(ergm.count)
+load('data/SampsonMonks.Rdata')
+g = as.network(X)
+
+#fit <- ergmm(g ~ euclidean(d=2))
+#plot(fit, pie=TRUE, edge.col="gray")
+
+fit2 <- ergmm(g ~ euclidean(d=2, G=3))
+plot(fit2, pie=TRUE, edge.col="gray")
+```
+
+Now, with a different inference procedure (VBEM):
+
+```{r message=FALSE, warning=FALSE}
+library(VBLPCM)
+data(sampson,package="VBLPCM")
+
+# Fitting the model
+par(mfrow=c(1,2))
+v.start<-vblpcmstart(samplike,G=3,model="plain",LSTEPS=1e3)
+v.fit<-vblpcmfit(v.start,STEPS=20)
+plot(v.fit, R2=0.05,main="Sampson's Monks with VBLPCM")
+
+v.start<-vblpcmstart(samplike,G=3,model="rreceiver",LSTEPS=1e3)
+v.fit<-vblpcmfit(v.start,STEPS=20)
+
+# Plot the mean posterior positions
+plot(v.fit, R2=0.05,main="Sampson's Monks with VBLPCM")
+
+# Who's in each group?
+vblpcmgroups(v.fit)
+
+# Look at a goodness-of-fit plot
+plot(gof(v.fit,GOF=~distance))
+
+# Create a matrix of link posterior probabilities given the fitted model
+probs<-predict.vblpcm(v.fit)
+
+# Create a boxplot goodness-of-fit graphic
+boxplot(split(probs,as.sociomatrix(samplike)))
+```
+
+Let's now use a model selection criterion for choosing the number of groups:
+
+```{r eval=FALSE}
+BIC = c()
+for (k in 1:5){
+  v.start<-vblpcmstart(samplike,G=k,model="plain",LSTEPS=1e3)
+  v.fit<-vblpcmfit(v.start,STEPS=20)
+  BIC[k] = vblpcmbic(v.fit)$overall
+}
+plot(BIC,type='b')
+```
+
+Finally, let's fit a LPCM model with a sender-receiver random effect:
+
+```{r message=FALSE, warning=FALSE}
+library(latentnet); library(ergm.count)
+load('SampsonMonks.Rdata')
+g = as.network(X)
+
+fit <- ergmm(as.network(g)~euclidean(d=2, G=3))
+
+fit2 <- ergmm(as.network(g)~euclidean(d=2, G=3)+
+               rsender(var=1, var.df=3)+rreceiver(var=1, var.df=3))
+
+par(mfrow=c(1,2))
+plot(fit, pie=TRUE, edge.col="gray")
+plot(fit2, pie=TRUE, rand.eff="receiver", edge.col="gray")
+```
+
+Let's now use LPCM to cluster a larger data set (the Enron data set):
+
+```{r eval=FALSE}
+load('EnronEmails.RData'); library(VBLPCM)
+????
+```
+
+# Stochastic block model
+
+Let's first generate some networks according to a SBM model:
+
+```{r}
+K = 3; N = 500
+tau = c(0.1,0.6,0.3)
+PI = rbind(c(0.05,0.15,0.2),
+           c(0.2,0.4,0.01),
+           c(0.15,0.01,0.3))
+PI = PI / 10
+C = t(rmultinom(N,1,tau))
+G = apply(C,1,which.max)
+X = matrix(0,N,N)
+for (i in 1:N){
+  for (j in 1:N){
+    X[i,j] = rbinom(1,1,PI[G[i],G[j]])
+  }
+}
+    
+library(sna)
+gplot(X,edge.col='gray',vertex.col = G)
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+library(mixer)
+load('data/SampsonMonks.Rdata')
+
+out = mixer(X,qmin=1,qmax=10,directed = TRUE)
+
+plot(out)
+
+plot(out,frame=2)
+```
+
+In SBM, the ICL criterion can be used to choose the most appropriate number of groups for the data at hand:
+
+```{r eval=FALSE}
+library(mixer)
+load('SampsonMonks.Rdata')
+
+out = mixer(X,qmin=1,qmax=10,directed = TRUE)
+
+plot(out)
+
+plot(out,5,frame=5)
+```
+
+
+Let's now use SBM to cluster a larger data set (the Enron data set):
+
+```{r eval=FALSE}
+library(igraph)
+load('EnronEmails.RData')
+X = as.matrix(z)
+
+out = mixer(X,qmin=1,qmax=15,directed=TRUE)
+
+plot(out,frame=4)
+```
+
+> Exercice: comment the result obtained on those data.
